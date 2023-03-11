@@ -1,11 +1,13 @@
 use azalea_auth::game_profile::GameProfile;
 use azalea_client::{
-    packet_handling::ChatReceivedEvent, ChatPacket, GameProfileComponent, LocalPlayer,
+    chat::{ChatPacket, ChatReceivedEvent, SendChatEvent},
+    GameProfileComponent,
 };
 use azalea_ecs::{
     app::{App, Plugin},
     entity::Entity,
-    event::EventReader,
+    event::{EventReader, EventWriter},
+    query::With,
     schedule::{IntoSystemDescriptor, ShouldRun},
     system::{Query, Res, Resource},
 };
@@ -14,18 +16,13 @@ use azalea_protocol::packets::game::clientbound_player_chat_packet::{
     ChatType, ChatTypeBound, ClientboundPlayerChatPacket, FilterMask, PackedLastSeenMessages,
     PackedSignedMessageBody,
 };
-use azalea_protocol::packets::game::serverbound_chat_packet::{
-    LastSeenMessagesUpdate, ServerboundChatPacket,
-};
+use azalea_world::entity::Local;
 use flume::{Receiver, Sender};
 #[cfg(feature = "bridge")]
 use log::error;
+use std::marker::PhantomData;
 #[cfg(feature = "bridge")]
 use std::sync::Arc;
-use std::{
-    marker::PhantomData,
-    time::{SystemTime, UNIX_EPOCH},
-};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -124,20 +121,20 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
     // Process events from channel
     pub fn listen_event(
         client: Res<ClientSide<T>>,
-        mut query: Query<(Entity, &mut LocalPlayer)>,
-        #[cfg(feature = "bridge")] profiles: Query<&GameProfileComponent>,
+        mut events: EventWriter<SendChatEvent>,
+        query: Query<(Entity, &GameProfileComponent), With<Local>>,
     ) {
-        let Ok((_entity, mut player)) = query.get_single_mut() else { return };
+        let (entity, _profile) = query.single();
         while let Ok(event) = client.rx.try_recv() {
             #[cfg(feature = "bridge")]
-            if let Err(e) = Self::link_plugins(&client, event.clone(), _entity, &profiles) {
+            if let Err(e) = Self::link_plugins(&client, &event, _profile) {
                 error!("Unable to send message to linked plugin: {e}");
             }
+
             match event {
                 PluginEvent::Chat(username, message) => {
-                    let packets = create_packets(username, message);
-                    for packet in packets {
-                        player.write_packet(packet.get());
+                    for content in format_message(username, message) {
+                        events.send(SendChatEvent { entity, content });
                     }
                 }
                 _ => {}
@@ -149,14 +146,12 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
     #[cfg(feature = "bridge")]
     fn link_plugins(
         client: &ClientSide<T>,
-        event: PluginEvent,
-        entity: Entity,
-        profiles: &Query<&GameProfileComponent>,
+        event: &PluginEvent,
+        profile: &GameProfileComponent,
     ) -> anyhow::Result<()> {
         if client.links.len() == 0 {
             return Ok(());
         }
-        let profile = profiles.get(entity)?;
         match event {
             PluginEvent::Chat(username, message) => {
                 let packet = ClientboundPlayerChatPacket {
@@ -171,7 +166,7 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
                             entries: Vec::new(),
                         },
                     },
-                    unsigned_content: None,
+                    unsigned_content: Some(format!("{username}: {message}").into()),
                     filter_mask: FilterMask::PassThrough,
                     chat_type: ChatTypeBound {
                         chat_type: ChatType::Chat,
@@ -233,24 +228,6 @@ fn find_profile(
         }
     }
     None
-}
-
-// Create ChatPackets
-fn create_packets(username: String, message: String) -> Vec<ServerboundChatPacket> {
-    let mut list: Vec<ServerboundChatPacket> = Vec::new();
-    for message in format_message(username, message) {
-        list.push(ServerboundChatPacket {
-            message,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            salt: azalea_crypto::make_salt(),
-            signature: None,
-            last_seen_messages: LastSeenMessagesUpdate::default(),
-        });
-    }
-    list
 }
 
 // Limit message length to 254 characters
