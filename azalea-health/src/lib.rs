@@ -1,23 +1,11 @@
+use azalea_client::{packet_handling::KeepAliveEvent, GameProfileComponent};
+use bevy::prelude::{App, EventReader, IntoSystemConfigs, Plugin, Query, Res, ResMut, Resource};
+use derive_more::{Deref, DerefMut};
 use std::{
     collections::HashMap,
     net::{AddrParseError, SocketAddr},
     time::Instant,
 };
-
-use azalea_client::{
-    ecs::{
-        app::{App, Plugin},
-        system::Resource,
-    },
-    packet_handling::KeepAliveEvent,
-    GameProfileComponent,
-};
-use azalea_ecs::{
-    event::EventReader,
-    schedule::IntoSystemDescriptor,
-    system::{Query, Res, ResMut},
-};
-use derive_more::{Deref, DerefMut};
 use tiny_http::{Method, Response, StatusCode};
 
 // This is the plugin
@@ -41,16 +29,8 @@ impl Plugin for HealthCheck {
             .unwrap_or_else(|_| panic!("HealthCheck is unable to bind to {}", self.addr));
         app.insert_resource(HealthCheckServer(server));
 
-        app.add_system(
-            healthcheck_listener
-                .label("healthcheck_listener")
-        )
-        .add_system(
-            healthcheck_server
-                .label("healthcheck_server")
-                .after("healthcheck_listener")
-        )
-        .init_resource::<HealthCheckTimer>();
+        app.add_systems((healthcheck_listener, healthcheck_server).chain())
+            .init_resource::<HealthCheckTimer>();
     }
 }
 
@@ -110,7 +90,7 @@ fn healthcheck_server(server: Res<HealthCheckServer>, status: Res<HealthCheckTim
             } else {
                 StatusCode::from(404)
             };
-            
+
             drop(request.respond(Response::new_empty(code)));
         // If not in HashMap, respond NOT_FOUND 404
         } else {

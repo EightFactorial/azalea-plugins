@@ -10,9 +10,10 @@ anyhow = "1.0.69"
 azalea-auth = {git = "https://github.com/mat-1/azalea.git"}
 azalea-client = {git = "https://github.com/mat-1/azalea.git"}
 azalea-crypto = {git = "https://github.com/mat-1/azalea.git"}
-azalea-ecs = {git = "https://github.com/mat-1/azalea.git"}
 azalea-protocol = {git = "https://github.com/mat-1/azalea.git"}
 azalea-world = {git = "https://github.com/mat-1/azalea.git"}
+bevy = "0.10.0"
+bevy_ecs = "0.10.0"
 flume = "0.10.14"
 log = "0.4.17"
 uuid = "1.3.0"

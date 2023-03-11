@@ -3,27 +3,23 @@ use azalea_client::{
     chat::{ChatPacket, ChatReceivedEvent, SendChatEvent},
     GameProfileComponent,
 };
-use azalea_ecs::{
-    app::{App, Plugin},
-    entity::Entity,
-    event::{EventReader, EventWriter},
-    query::With,
-    schedule::{IntoSystemDescriptor, ShouldRun},
-    system::{Query, Res, Resource},
+use azalea_world::entity::Local;
+use bevy::prelude::{
+    App, Entity, EventReader, EventWriter, IntoSystemSetConfig, Plugin, Query, Res, Resource, With,
 };
+use flume::{Receiver, Sender};
+use std::marker::PhantomData;
+use uuid::Uuid;
+
 #[cfg(feature = "bridge")]
 use azalea_protocol::packets::game::clientbound_player_chat_packet::{
     ChatType, ChatTypeBound, ClientboundPlayerChatPacket, FilterMask, PackedLastSeenMessages,
     PackedSignedMessageBody,
 };
-use azalea_world::entity::Local;
-use flume::{Receiver, Sender};
 #[cfg(feature = "bridge")]
 use log::error;
-use std::marker::PhantomData;
 #[cfg(feature = "bridge")]
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct PluginBridge<T: Clone + Sync + Send + 'static> {
@@ -110,12 +106,8 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
     }
 
     // Whether or not to run the listen_event system
-    pub fn listen_event_criteria(plugin: Res<ClientSide<T>>) -> ShouldRun {
-        if !plugin.rx.is_empty() {
-            ShouldRun::Yes
-        } else {
-            ShouldRun::No
-        }
+    pub fn listen_if(client: Res<ClientSide<T>>) -> bool {
+        !client.rx.is_empty()
     }
 
     // Process events from channel
@@ -194,7 +186,8 @@ impl<T: Clone + Sync + Send + 'static> Plugin for ClientSide<T> {
             .add_system(ClientSide::<T>::listen_chat)
             .add_system(
                 ClientSide::<T>::listen_event
-                    .with_run_criteria(ClientSide::<T>::listen_event_criteria),
+                    .into()
+                    .run_if(should_run(ClientSide::<T>::listen_event_criteria)),
             );
     }
 }
