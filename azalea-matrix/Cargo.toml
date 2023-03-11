@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.69"
 azalea-auth = "0.6.0"
+azalea-bridge = { path = "../azalea-bridge" }
 azalea-client = "0.6.0"
 azalea-crypto = "0.6.0"
 azalea-ecs = "0.6.0"

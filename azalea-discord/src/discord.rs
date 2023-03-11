@@ -1,3 +1,4 @@
+use azalea_bridge::{AzaleaEvent, PluginSide};
 use flume::{Receiver, Sender};
 use log::{error, info, warn};
 use std::{error::Error, sync::Arc};
@@ -6,13 +7,12 @@ use twilight_gateway::{Event, Intents, Shard, ShardId};
 use twilight_http::Client as HttpClient;
 use twilight_model::id::{marker::ChannelMarker, Id};
 
-use crate::{AzaleaEvent, DiscordEvent};
+use crate::DiscordEvent;
 
 pub(crate) async fn main(
     token: String,
     channel_id: u64,
-    rx: Receiver<AzaleaEvent>,
-    tx: Sender<DiscordEvent>,
+    plugin: PluginSide<DiscordEvent>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Specify intents requesting events about things like new and updated
     // messages in a guild and direct messages.
@@ -25,14 +25,18 @@ pub(crate) async fn main(
     // one, also use Arc such that it can be cloned to other threads.
     let http = Arc::new(HttpClient::new(token));
 
-    let tx = Arc::new(tx);
+    let tx = Arc::new(plugin.tx);
 
     // Since we only care about messages, make the cache only process messages.
     let cache = InMemoryCache::builder()
         .resource_types(ResourceType::MESSAGE)
         .build();
 
-    tokio::spawn(handle_mc_event(Arc::clone(&http), Id::new(channel_id), rx));
+    tokio::spawn(handle_mc_event(
+        Arc::clone(&http),
+        Id::new(channel_id),
+        plugin.rx,
+    ));
 
     // Startup the event loop to process each event in the event stream as they
     // come in.
@@ -69,10 +73,10 @@ async fn handle_discord_event(event: Event, tx: Arc<Sender<DiscordEvent>>) -> an
             }
 
             // Send message to Azalea
-            tx.send_async(DiscordEvent::Chat(
-                event.author.name.clone(),
-                event.content.clone(),
-            ))
+            tx.send_async(DiscordEvent {
+                username: event.author.name.clone(),
+                message: event.content.clone(),
+            })
             .await?;
         }
         _ => {}

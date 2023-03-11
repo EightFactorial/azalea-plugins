@@ -1,3 +1,4 @@
+use azalea_bridge::{AzaleaEvent, PluginSide};
 use flume::{Receiver, Sender};
 use log::{error, warn, info};
 use matrix_sdk::{
@@ -8,15 +9,14 @@ use matrix_sdk::{
 use matrix_sdk_appservice::AppService;
 use uuid::Uuid;
 
-use crate::{AzaleaEvent, MatrixEvent};
+use crate::MatrixEvent;
 
 pub(crate) async fn startup(
     bot_name: Option<String>,
     _bot_image: Option<String>,
     target_room: String,
     appservice: AppService,
-    tx: Sender<MatrixEvent>,
-    rx: Receiver<AzaleaEvent>,
+    plugin: PluginSide<MatrixEvent>
 ) -> anyhow::Result<()> {
     appservice
         .register_user_query(Box::new(|_, req| Box::pin(async move {
@@ -46,7 +46,7 @@ pub(crate) async fn startup(
 
     // Add context for later
     client.add_event_handler_context(appservice.clone());
-    client.add_event_handler_context(tx);
+    client.add_event_handler_context(plugin.tx);
 
     // Handle room invites
     client.add_event_handler(mx_room_handler);
@@ -68,7 +68,7 @@ pub(crate) async fn startup(
     let namespace = get_namespace(appservice.registration().namespaces.clone()).unwrap();
 
     // Listen for events from channel
-    tokio::spawn(mc_message_handler(appservice.clone(), namespace, room, rx));
+    tokio::spawn(mc_message_handler(appservice.clone(), namespace, room, plugin.rx));
 
     // Run AppService
     let (host, port) = appservice.registration().get_host_and_port().unwrap();
@@ -82,7 +82,7 @@ async fn mc_message_handler(appservice: AppService, namespace: Namespace, room: 
     while let Ok(event) = rx.recv_async().await {
         match event {
             // Chat messages
-            AzaleaEvent::Chat(profile, packet) => {
+            AzaleaEvent::Chat(_profile, packet) => {
                 let username = if let Some(username) = packet.username() { username } else { "Server".to_string() };
                 let uuid = if let Some(uuid) = packet.uuid() { uuid } else { Uuid::default() };
 
@@ -109,12 +109,10 @@ async fn mc_message_handler(appservice: AppService, namespace: Namespace, room: 
 
                     // Set profile picture on sync
                     let account = user.account();
-                    if let Some(_profile) = profile {
-                        if let Ok(icon) = account.get_avatar_url().await {
-                            if matches!(icon, None) {
-                            // TODO: Get property, convert to Vec<u8>, upload, and set avatar url
-                            // info!("{:?}", profile);
-                            }
+                    if let Ok(icon) = account.get_avatar_url().await {
+                        if matches!(icon, None) {
+                        // TODO: Get property, convert to Vec<u8>, upload, and set avatar url
+                        // info!("{:?}", profile);
                         }
                     }
                 }
@@ -198,7 +196,7 @@ async fn mx_message_handler(
             }.to_string();
 
             // Send message to Plugin
-            drop(tx.send_async(MatrixEvent::Chat(username, message.body)).await);
+            drop(tx.send_async(MatrixEvent { username, message: message.body }).await);
         }
         _ => {}
     }
