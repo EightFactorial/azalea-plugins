@@ -118,6 +118,7 @@ async fn handle_mc_event(
                     continue;
                 }
             }
+            _ => {}
         }
     }
 }

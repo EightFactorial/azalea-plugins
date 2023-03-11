@@ -7,7 +7,6 @@ use matrix_sdk::{
     ruma::{events::room::{message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent, TextMessageEventContent}, member::{OriginalSyncRoomMemberEvent, MembershipState}, join_rules::JoinRule}, UserId, api::{client::error::ErrorKind, appservice::{Namespace, Namespaces}}}, config::SyncSettings,
 };
 use matrix_sdk_appservice::AppService;
-use uuid::Uuid;
 
 use crate::MatrixPlugin;
 
@@ -82,9 +81,9 @@ async fn mc_message_handler(appservice: AppService, namespace: Namespace, room: 
     while let Ok(event) = rx.recv_async().await {
         match event {
             // Chat messages
-            AzaleaEvent::Chat(_profile, packet) => {
-                let username = if let Some(username) = packet.username() { username } else { "Server".to_string() };
-                let uuid = if let Some(uuid) = packet.uuid() { uuid } else { Uuid::default() };
+            AzaleaEvent::Chat(profile, packet) => {
+                let username = if let Some(username) = packet.username() { username } else { profile.name };
+                let uuid = if let Some(uuid) = packet.uuid() { uuid } else { profile.uuid };
 
                 // Kind of gross but does the job?
                 let localpart = format!("{}{}", namespace.regex.trim_start_matches('@').trim_end_matches(".*"), uuid.to_string().replace('-', "_"));
@@ -165,6 +164,7 @@ async fn mc_message_handler(appservice: AppService, namespace: Namespace, room: 
                 let event = RoomMessageEventContent::new(MessageType::Text(TextMessageEventContent::plain(packet.content())));
                 room.send(event, None).await.unwrap();
             }
+            _ => {}
         }
     }
     error!("MatrixPlugin event listener exited!");

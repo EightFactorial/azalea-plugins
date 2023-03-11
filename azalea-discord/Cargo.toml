@@ -15,3 +15,6 @@ twilight-cache-inmemory = "0.15.0"
 twilight-gateway = "0.15.0"
 twilight-http = "0.15.0"
 twilight-model = "0.15.0"
+
+[features]
+bridge = ["azalea-bridge/bridge"]
