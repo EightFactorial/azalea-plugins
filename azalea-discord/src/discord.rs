@@ -5,24 +5,25 @@ use std::error::Error;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, Intents, Shard, ShardId};
 use twilight_http::Client as HttpClient;
-use twilight_model::id::{marker::ChannelMarker, Id};
+use twilight_model::id::{marker::WebhookMarker, Id};
 
 use crate::DiscordPlugin;
 
 pub(crate) async fn main(
-    token: String,
-    channel_id: u64,
+    bot_token: String,
+    webhook_token: String,
+    webhook_id: u64,
     plugin: PluginSide<DiscordPlugin>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Create a single shard.
     let mut shard = Shard::new(
         ShardId::ONE,
-        token.clone(),
+        bot_token.clone(),
         Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT,
     );
 
     // The http client is separate from the gateway, so startup a new one.
-    let http = HttpClient::new(token);
+    let http = HttpClient::new(bot_token);
 
     // Since we only care about messages, make the cache only process messages.
     let cache = InMemoryCache::builder()
@@ -30,7 +31,12 @@ pub(crate) async fn main(
         .build();
 
     // Handle events from Azalea
-    tokio::spawn(handle_mc_event(http, Id::new(channel_id), plugin.rx));
+    tokio::spawn(handle_mc_event(
+        http,
+        webhook_token,
+        Id::new(webhook_id),
+        plugin.rx,
+    ));
 
     // Startup the event loop to process each event in the event stream as they
     // come in.
@@ -84,7 +90,8 @@ async fn handle_discord_event(event: Event, tx: Sender<PluginEvent>) -> anyhow::
 
 async fn handle_mc_event(
     http: HttpClient,
-    channel_id: Id<ChannelMarker>,
+    webhook_token: String,
+    webhook_id: Id<WebhookMarker>,
     rx: Receiver<AzaleaEvent>,
 ) -> anyhow::Result<()> {
     loop {
@@ -101,16 +108,25 @@ async fn handle_mc_event(
                 };
 
                 // Attempt to escape formatting
-                let message = format!("{username}: {}", packet.content())
+                let message = packet
+                    .content()
                     .replace('\\', "\\*")
                     .replace('*', "\\*")
                     .replace('_', "\\_")
                     .replace('`', "\\`")
                     .replace('>', "\\>");
 
-                if let Ok(message) = http.create_message(channel_id).content(&message) {
-                    if let Err(e) = message.await {
-                        error!("Unable to send message: {e}");
+                if let Ok(message) = http
+                    .execute_webhook(webhook_id, &webhook_token)
+                    .content(&message)
+                {
+                    if let Ok(message) = message.username(&username) {
+                        if let Err(e) = message.await {
+                            error!("Unable to send message: {e}");
+                            continue;
+                        }
+                    } else {
+                        error!("Unable to set message username: {username}");
                         continue;
                     }
                 } else {

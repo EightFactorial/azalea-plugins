@@ -164,7 +164,7 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
                     index: 0,
                     signature: None,
                     body: PackedSignedMessageBody {
-                        content: format!("(Bridge) {username}: {message}"),
+                        content: format!("{username}: {message}"),
                         timestamp: 0,
                         salt: 0,
                         last_seen: PackedLastSeenMessages {
