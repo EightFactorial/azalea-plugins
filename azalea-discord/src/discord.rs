@@ -5,12 +5,16 @@ use std::error::Error;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, Intents, Shard, ShardId};
 use twilight_http::Client as HttpClient;
-use twilight_model::id::{marker::WebhookMarker, Id};
+use twilight_model::id::{
+    marker::{ChannelMarker, WebhookMarker},
+    Id,
+};
 
 use crate::DiscordPlugin;
 
 pub(crate) async fn main(
     bot_token: String,
+    channel_id: u64,
     webhook_token: String,
     webhook_id: u64,
     plugin: PluginSide<DiscordPlugin>,
@@ -40,6 +44,7 @@ pub(crate) async fn main(
 
     // Startup the event loop to process each event in the event stream as they
     // come in.
+    let channel_id: Id<ChannelMarker> = Id::new(channel_id);
     loop {
         let event = match shard.next_event().await {
             Ok(event) => event,
@@ -55,18 +60,31 @@ pub(crate) async fn main(
         cache.update(&event);
 
         // Spawn a new task to handle the event
-        tokio::spawn(handle_discord_event(event, plugin.tx.clone()));
+        tokio::spawn(handle_discord_event(
+            event,
+            channel_id.clone(),
+            plugin.tx.clone(),
+        ));
     }
 
     Ok(())
 }
 
-async fn handle_discord_event(event: Event, tx: Sender<PluginEvent>) -> anyhow::Result<()> {
+async fn handle_discord_event(
+    event: Event,
+    channel_id: Id<ChannelMarker>,
+    tx: Sender<PluginEvent>,
+) -> anyhow::Result<()> {
     match event {
         Event::Ready(_) => {
             info!("Discord bot is ready!");
         }
         Event::MessageCreate(event) => {
+            // Only listen on one channel
+            if channel_id != event.channel_id {
+                return Ok(());
+            }
+
             // Don't send messages from bots
             if event.author.bot {
                 return Ok(());

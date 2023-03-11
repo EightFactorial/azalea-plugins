@@ -8,6 +8,7 @@ pub struct DiscordPlugin;
 impl DiscordPlugin {
     pub async fn new(
         bot_token: &str,
+        channel_id: u64,
         webhook_token: &str,
         webhook_id: u64,
         ignore_list: Vec<&str>,
@@ -20,6 +21,7 @@ impl DiscordPlugin {
         // Spawn Discord bot
         tokio::spawn(discord::main(
             bot_token.to_string(),
+            channel_id,
             webhook_token.to_string(),
             webhook_id,
             bridge.plugin,
