@@ -55,6 +55,7 @@ pub struct ClientSide<T> {
 }
 
 impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
+    // Send chat events to plugin
     pub fn listen_chat(
         client: Res<ClientSide<T>>,
         profiles: Query<&GameProfileComponent>,
@@ -77,11 +78,12 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
                 profile.name = "Server".to_string();
             }
 
-            // No not send messages from players in the ignore list
+            // Do not send messages from players in the ignore list
             if client.ignore_list.contains(&profile.name) {
                 continue;
             }
 
+            // Send event to plugin
             client
                 .tx
                 .send(AzaleaEvent::Chat(profile, event.packet.clone()))
@@ -89,6 +91,7 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
         }
     }
 
+    // Whether or not to run the listen_event system
     pub fn listen_event_criteria(plugin: Res<ClientSide<T>>) -> ShouldRun {
         if !plugin.rx.is_empty() {
             ShouldRun::Yes
@@ -97,6 +100,7 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
         }
     }
 
+    // Process events from channel
     pub fn listen_event(client: Res<ClientSide<T>>, mut query: Query<&mut LocalPlayer>) {
         let Ok(mut player) = query.get_single_mut() else { return };
         while let Ok(event) = client.rx.try_recv() {
@@ -109,6 +113,7 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
     }
 }
 
+// Add channel and systems to Bevy
 impl<T: Clone + Sync + Send + 'static> Plugin for ClientSide<T> {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.clone())
@@ -149,6 +154,7 @@ fn find_profile(
     None
 }
 
+// Create ChatPackets
 fn create_packets(username: String, message: String) -> Vec<ServerboundChatPacket> {
     let mut list: Vec<ServerboundChatPacket> = Vec::new();
     for message in format_message(username, message) {
@@ -166,6 +172,7 @@ fn create_packets(username: String, message: String) -> Vec<ServerboundChatPacke
     list
 }
 
+// Limit message length to 254 characters
 fn format_message(name: String, msg: String) -> Vec<String> {
     let mut message = format!("{name}: {msg}");
     if message.len() < 255 {

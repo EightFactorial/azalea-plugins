@@ -16,8 +16,10 @@ impl DiscordPlugin {
         // Create commucation channel
         let bridge = PluginBridge::<DiscordPlugin>::new(ignore);
 
+        // Spawn Discord bot
         tokio::spawn(discord::main(token.to_string(), channel_id, bridge.plugin));
 
+        // Return a 'ClientSide' Plugin to insert into Azalea
         bridge.client
     }
 }

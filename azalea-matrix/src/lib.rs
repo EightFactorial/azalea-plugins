@@ -32,7 +32,7 @@ impl MatrixPlugin {
         .build()
         .await?;
 
-        // Spawn a new thread to do matrix bot things
+        // Spawn Matrix bot
         tokio::spawn(matrix::startup(
             bot_name,
             bot_image,

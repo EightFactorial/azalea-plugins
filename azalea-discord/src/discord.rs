@@ -1,7 +1,7 @@
 use azalea_bridge::{AzaleaEvent, PluginEvent, PluginSide};
 use flume::{Receiver, Sender};
 use log::{error, info, warn};
-use std::{error::Error, sync::Arc};
+use std::error::Error;
 use twilight_cache_inmemory::{InMemoryCache, ResourceType};
 use twilight_gateway::{Event, Intents, Shard, ShardId};
 use twilight_http::Client as HttpClient;
@@ -14,29 +14,23 @@ pub(crate) async fn main(
     channel_id: u64,
     plugin: PluginSide<DiscordPlugin>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    // Specify intents requesting events about things like new and updated
-    // messages in a guild and direct messages.
-    let intents = Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT;
-
     // Create a single shard.
-    let mut shard = Shard::new(ShardId::ONE, token.clone(), intents);
+    let mut shard = Shard::new(
+        ShardId::ONE,
+        token.clone(),
+        Intents::GUILD_MESSAGES | Intents::MESSAGE_CONTENT,
+    );
 
-    // The http client is separate from the gateway, so startup a new
-    // one, also use Arc such that it can be cloned to other threads.
-    let http = Arc::new(HttpClient::new(token));
-
-    let tx = Arc::new(plugin.tx);
+    // The http client is separate from the gateway, so startup a new one.
+    let http = HttpClient::new(token);
 
     // Since we only care about messages, make the cache only process messages.
     let cache = InMemoryCache::builder()
         .resource_types(ResourceType::MESSAGE)
         .build();
 
-    tokio::spawn(handle_mc_event(
-        Arc::clone(&http),
-        Id::new(channel_id),
-        plugin.rx,
-    ));
+    // Handle events from Azalea
+    tokio::spawn(handle_mc_event(http, Id::new(channel_id), plugin.rx));
 
     // Startup the event loop to process each event in the event stream as they
     // come in.
@@ -55,13 +49,13 @@ pub(crate) async fn main(
         cache.update(&event);
 
         // Spawn a new task to handle the event
-        tokio::spawn(handle_discord_event(event, Arc::clone(&tx)));
+        tokio::spawn(handle_discord_event(event, plugin.tx.clone()));
     }
 
     Ok(())
 }
 
-async fn handle_discord_event(event: Event, tx: Arc<Sender<PluginEvent>>) -> anyhow::Result<()> {
+async fn handle_discord_event(event: Event, tx: Sender<PluginEvent>) -> anyhow::Result<()> {
     match event {
         Event::Ready(_) => {
             info!("Discord bot is ready!");
@@ -73,11 +67,15 @@ async fn handle_discord_event(event: Event, tx: Arc<Sender<PluginEvent>>) -> any
             }
 
             // Send message to Azalea
-            tx.send_async(PluginEvent::Chat(
-                event.author.name.clone(),
-                event.content.clone(),
-            ))
-            .await?;
+            if let Err(e) = tx
+                .send_async(PluginEvent::Chat(
+                    event.author.name.clone(),
+                    event.content.clone(),
+                ))
+                .await
+            {
+                error!("DiscordPlugin unable to send message to Azalea: {e}");
+            }
         }
         _ => {}
     }
@@ -85,7 +83,7 @@ async fn handle_discord_event(event: Event, tx: Arc<Sender<PluginEvent>>) -> any
 }
 
 async fn handle_mc_event(
-    http: Arc<HttpClient>,
+    http: HttpClient,
     channel_id: Id<ChannelMarker>,
     rx: Receiver<AzaleaEvent>,
 ) -> anyhow::Result<()> {
@@ -95,28 +93,30 @@ async fn handle_mc_event(
             return Err(anyhow::Error::msg("DiscordPlugin Minecraft listener closed"));        
         };
         match event {
-            AzaleaEvent::Chat(_profile, packet) => {
-                let (sender, mut message) = packet.split_sender_and_content();
-                let sender = if let Some(username) = sender {
-                    username
+            AzaleaEvent::Chat(profile, packet) => {
+                let username = if let Some(user) = packet.username() {
+                    user
                 } else {
-                    "Server".to_string()
+                    profile.name
                 };
 
                 // Attempt to escape formatting
-                message = format!("{sender}: {message}")
+                let message = format!("{username}: {}", packet.content())
                     .replace('\\', "\\*")
                     .replace('*', "\\*")
                     .replace('_', "\\_")
                     .replace('`', "\\`")
                     .replace('>', "\\>");
 
-                // TODO: Escape formatting characters
-                http.create_message(channel_id)
-                    .content(&message)
-                    .unwrap()
-                    .await
-                    .unwrap();
+                if let Ok(message) = http.create_message(channel_id).content(&message) {
+                    if let Err(e) = message.await {
+                        error!("Unable to send message: {e}");
+                        continue;
+                    }
+                } else {
+                    error!("Unable to set message content: {message}");
+                    continue;
+                }
             }
         }
     }
