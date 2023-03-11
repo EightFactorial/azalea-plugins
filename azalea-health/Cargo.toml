@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-azalea-client = "0.6.0"
-azalea-ecs = "0.6.0"
-azalea-world = "0.6.0"
+azalea-client = {git = "https://github.com/mat-1/azalea.git"}
+azalea-ecs = {git = "https://github.com/mat-1/azalea.git"}
+azalea-world = {git = "https://github.com/mat-1/azalea.git"}
 derive_more = "0.99.17"
 tiny_http = "0.12.0"
