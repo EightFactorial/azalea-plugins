@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use azalea_auth::game_profile::GameProfile;
 use azalea_client::{
     packet_handling::ChatReceivedEvent, ChatPacket, GameProfileComponent, LocalPlayer,
@@ -14,15 +12,19 @@ use azalea_protocol::packets::game::serverbound_chat_packet::{
     LastSeenMessagesUpdate, ServerboundChatPacket,
 };
 use flume::{Receiver, Sender};
+use std::{
+    marker::PhantomData,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub struct PluginBridge<Event: IntoEvent + Clone + Send + Sync + 'static> {
-    pub client: ClientSide<Event>,
-    pub plugin: PluginSide<Event>,
+pub struct PluginBridge<T: Clone + Sync + Send + 'static> {
+    pub client: ClientSide<T>,
+    pub plugin: PluginSide<T>,
 }
 
-impl<Event: IntoEvent + Clone + Send + Sync + 'static> PluginBridge<Event> {
+impl<T: Clone + Sync + Send + 'static> PluginBridge<T> {
     pub fn new(ignore_list: Vec<String>) -> Self {
         // Create commucation channel
         let (client_tx, client_rx) = flume::unbounded();
@@ -33,29 +35,28 @@ impl<Event: IntoEvent + Clone + Send + Sync + 'static> PluginBridge<Event> {
                 rx: plugin_rx,
                 tx: client_tx,
                 ignore_list,
+                _d: PhantomData,
             },
             plugin: PluginSide {
                 rx: client_rx,
                 tx: plugin_tx,
+                _d: PhantomData,
             },
         }
     }
 }
 
 #[derive(Debug, Clone, Resource)]
-pub struct ClientSide<Event: IntoEvent + Clone + Send + Sync + 'static> {
-    pub rx: Receiver<Event>,
+pub struct ClientSide<T> {
+    pub rx: Receiver<PluginEvent>,
     pub tx: Sender<AzaleaEvent>,
     pub ignore_list: Vec<String>,
+    _d: PhantomData<T>,
 }
 
-pub trait IntoEvent {
-    fn chat(&self) -> (String, String);
-}
-
-impl<Event: IntoEvent + Clone + Send + Sync + 'static> ClientSide<Event> {
+impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
     pub fn listen_chat(
-        client: Res<ClientSide<Event>>,
+        client: Res<ClientSide<T>>,
         profiles: Query<&GameProfileComponent>,
         mut chat_events: EventReader<ChatReceivedEvent>,
     ) {
@@ -88,7 +89,7 @@ impl<Event: IntoEvent + Clone + Send + Sync + 'static> ClientSide<Event> {
         }
     }
 
-    pub fn listen_event_criteria(plugin: Res<ClientSide<Event>>) -> ShouldRun {
+    pub fn listen_event_criteria(plugin: Res<ClientSide<T>>) -> ShouldRun {
         if !plugin.rx.is_empty() {
             ShouldRun::Yes
         } else {
@@ -96,10 +97,11 @@ impl<Event: IntoEvent + Clone + Send + Sync + 'static> ClientSide<Event> {
         }
     }
 
-    pub fn listen_event(client: Res<ClientSide<Event>>, mut query: Query<&mut LocalPlayer>) {
+    pub fn listen_event(client: Res<ClientSide<T>>, mut query: Query<&mut LocalPlayer>) {
         let Ok(mut player) = query.get_single_mut() else { return };
         while let Ok(event) = client.rx.try_recv() {
-            let packets = create_packets(event.chat());
+            let PluginEvent::Chat(username, message) = event;
+            let packets = create_packets(username, message);
             for packet in packets {
                 player.write_packet(packet.get());
             }
@@ -107,25 +109,32 @@ impl<Event: IntoEvent + Clone + Send + Sync + 'static> ClientSide<Event> {
     }
 }
 
-impl<Event: IntoEvent + Clone + Send + Sync + 'static> Plugin for ClientSide<Event> {
+impl<T: Clone + Sync + Send + 'static> Plugin for ClientSide<T> {
     fn build(&self, app: &mut App) {
         app.insert_resource(self.clone())
-            .add_system(ClientSide::<Event>::listen_chat)
+            .add_system(ClientSide::<T>::listen_chat)
             .add_system(
-                ClientSide::<Event>::listen_event
-                    .with_run_criteria(ClientSide::<Event>::listen_event_criteria),
+                ClientSide::<T>::listen_event
+                    .with_run_criteria(ClientSide::<T>::listen_event_criteria),
             );
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct PluginSide<Event: Send + Sync> {
+pub struct PluginSide<T> {
     pub rx: Receiver<AzaleaEvent>,
-    pub tx: Sender<Event>,
+    pub tx: Sender<PluginEvent>,
+    _d: PhantomData<T>,
 }
 
+#[derive(Debug, Clone)]
 pub enum AzaleaEvent {
     Chat(GameProfile, ChatPacket),
+}
+
+#[derive(Debug, Clone)]
+pub enum PluginEvent {
+    Chat(String, String),
 }
 
 fn find_profile(
@@ -140,7 +149,7 @@ fn find_profile(
     None
 }
 
-fn create_packets((username, message): (String, String)) -> Vec<ServerboundChatPacket> {
+fn create_packets(username: String, message: String) -> Vec<ServerboundChatPacket> {
     let mut list: Vec<ServerboundChatPacket> = Vec::new();
     for message in format_message(username, message) {
         list.push(ServerboundChatPacket {

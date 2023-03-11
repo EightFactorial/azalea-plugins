@@ -1,4 +1,4 @@
-use azalea_bridge::{AzaleaEvent, PluginSide};
+use azalea_bridge::{AzaleaEvent, PluginSide, PluginEvent};
 use flume::{Receiver, Sender};
 use log::{error, warn, info};
 use matrix_sdk::{
@@ -9,14 +9,14 @@ use matrix_sdk::{
 use matrix_sdk_appservice::AppService;
 use uuid::Uuid;
 
-use crate::MatrixEvent;
+use crate::MatrixPlugin;
 
 pub(crate) async fn startup(
     bot_name: Option<String>,
     _bot_image: Option<String>,
     target_room: String,
     appservice: AppService,
-    plugin: PluginSide<MatrixEvent>
+    plugin: PluginSide<MatrixPlugin>
 ) -> anyhow::Result<()> {
     appservice
         .register_user_query(Box::new(|_, req| Box::pin(async move {
@@ -175,7 +175,7 @@ async fn mx_message_handler(
     event: OriginalSyncRoomMessageEvent,
     room: Room,
     appservice: Ctx<AppService>,
-    tx: Ctx<Sender<MatrixEvent>>,
+    tx: Ctx<Sender<PluginEvent>>,
 ) {
     if appservice.user_id_is_in_namespace(&event.sender) {
         return;
@@ -196,7 +196,7 @@ async fn mx_message_handler(
             }.to_string();
 
             // Send message to Plugin
-            drop(tx.send_async(MatrixEvent { username, message: message.body }).await);
+            drop(tx.send_async(PluginEvent::Chat(username, message.body)).await);
         }
         _ => {}
     }

@@ -1,4 +1,4 @@
-use azalea_bridge::{AzaleaEvent, PluginSide};
+use azalea_bridge::{AzaleaEvent, PluginEvent, PluginSide};
 use flume::{Receiver, Sender};
 use log::{error, info, warn};
 use std::{error::Error, sync::Arc};
@@ -7,12 +7,12 @@ use twilight_gateway::{Event, Intents, Shard, ShardId};
 use twilight_http::Client as HttpClient;
 use twilight_model::id::{marker::ChannelMarker, Id};
 
-use crate::DiscordEvent;
+use crate::DiscordPlugin;
 
 pub(crate) async fn main(
     token: String,
     channel_id: u64,
-    plugin: PluginSide<DiscordEvent>,
+    plugin: PluginSide<DiscordPlugin>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Specify intents requesting events about things like new and updated
     // messages in a guild and direct messages.
@@ -61,7 +61,7 @@ pub(crate) async fn main(
     Ok(())
 }
 
-async fn handle_discord_event(event: Event, tx: Arc<Sender<DiscordEvent>>) -> anyhow::Result<()> {
+async fn handle_discord_event(event: Event, tx: Arc<Sender<PluginEvent>>) -> anyhow::Result<()> {
     match event {
         Event::Ready(_) => {
             info!("Discord bot is ready!");
@@ -73,10 +73,10 @@ async fn handle_discord_event(event: Event, tx: Arc<Sender<DiscordEvent>>) -> an
             }
 
             // Send message to Azalea
-            tx.send_async(DiscordEvent {
-                username: event.author.name.clone(),
-                message: event.content.clone(),
-            })
+            tx.send_async(PluginEvent::Chat(
+                event.author.name.clone(),
+                event.content.clone(),
+            ))
             .await?;
         }
         _ => {}

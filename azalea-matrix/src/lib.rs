@@ -1,4 +1,4 @@
-use azalea_bridge::{ClientSide, IntoEvent, PluginBridge};
+use azalea_bridge::{ClientSide, PluginBridge};
 use matrix_sdk_appservice::{AppServiceBuilder, AppServiceRegistration};
 
 mod matrix;
@@ -16,12 +16,12 @@ impl MatrixPlugin {
         ignore_list: Vec<&str>,
         bot_name: Option<String>,
         bot_image: Option<String>,
-    ) -> Result<ClientSide<MatrixEvent>, matrix_sdk_appservice::Error> {
+    ) -> Result<ClientSide<MatrixPlugin>, matrix_sdk_appservice::Error> {
         let room = room_id.to_string();
         let list: Vec<String> = ignore_list.iter().map(|s| s.to_string()).collect();
 
         // Create commucation channel
-        let bridge = PluginBridge::<MatrixEvent>::new(list);
+        let bridge = PluginBridge::<MatrixPlugin>::new(list);
 
         // Create the AppService
         let appservice = AppServiceBuilder::new(
@@ -43,17 +43,5 @@ impl MatrixPlugin {
 
         // Return a 'ClientSide' Plugin to insert into Azalea
         Ok(bridge.client)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MatrixEvent {
-    pub username: String,
-    pub message: String,
-}
-
-impl IntoEvent for MatrixEvent {
-    fn chat(&self) -> (String, String) {
-        (self.username.clone(), self.message.clone())
     }
 }
