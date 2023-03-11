@@ -153,6 +153,9 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
         entity: Entity,
         profiles: &Query<&GameProfileComponent>,
     ) -> anyhow::Result<()> {
+        if client.links.len() == 0 {
+            return Ok(());
+        }
         let profile = profiles.get(entity)?;
         match event {
             PluginEvent::Chat(username, message) => {
