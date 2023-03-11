@@ -5,7 +5,8 @@ use azalea_client::{
 };
 use azalea_world::entity::Local;
 use bevy::prelude::{
-    App, Entity, EventReader, EventWriter, IntoSystemSetConfig, Plugin, Query, Res, Resource, With,
+    App, CoreSet, Entity, EventReader, EventWriter, IntoSystemConfig, IntoSystemConfigs, Plugin,
+    Query, Res, Resource, With,
 };
 use flume::{Receiver, Sender};
 use std::marker::PhantomData;
@@ -182,13 +183,14 @@ impl<T: Clone + Sync + Send + 'static> ClientSide<T> {
 // Add channel and systems to Bevy
 impl<T: Clone + Sync + Send + 'static> Plugin for ClientSide<T> {
     fn build(&self, app: &mut App) {
-        app.insert_resource(self.clone())
-            .add_system(ClientSide::<T>::listen_chat)
-            .add_system(
-                ClientSide::<T>::listen_event
-                    .into()
-                    .run_if(should_run(ClientSide::<T>::listen_event_criteria)),
-            );
+        app.insert_resource(self.clone()).add_systems(
+            (
+                ClientSide::<T>::listen_chat,
+                ClientSide::<T>::listen_event.run_if(ClientSide::<T>::listen_if),
+            )
+                .chain()
+                .ambiguous_with(CoreSet::Update),
+        );
     }
 }
 
