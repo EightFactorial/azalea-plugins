@@ -8,6 +8,5 @@ edition = "2021"
 [dependencies]
 azalea-client = {git = "https://github.com/mat-1/azalea.git"}
 azalea-ecs = {git = "https://github.com/mat-1/azalea.git"}
-azalea-world = {git = "https://github.com/mat-1/azalea.git"}
 derive_more = "0.99.17"
 tiny_http = "0.12.0"
