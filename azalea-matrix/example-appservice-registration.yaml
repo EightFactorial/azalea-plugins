@@ -1,0 +1,21 @@
+id: "Minecraft Bridge"
+hs_token: Redacted
+as_token: Redacted
+namespaces:
+  aliases:
+   - exclusive: true
+     regex: '#minecraft-bot'
+   - exclusive: true
+     regex: '#_minecraft_.*'
+  rooms: []
+  users:
+  - exclusive: true
+    regex: '@minecraft-bot'
+# It is required that at least one regex that starts with '@' and ends with '.*'
+# The plugin will use the last regex pattern that matches this.
+  - exclusive: true
+    regex: '@_minecraft_.*'
+rate_limited: false
+sender_localpart: minecraft-bot
+# Address and port to expose AppService on
+url: "http://10.0.10.10:9009"

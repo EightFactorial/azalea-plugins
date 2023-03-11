@@ -1,0 +1,22 @@
+[package]
+name = "azalea-discord"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.69"
+azalea-auth = "0.6.0"
+azalea-client = "0.6.0"
+azalea-crypto = "0.6.0"
+azalea-ecs = "0.6.0"
+azalea-protocol = "0.6.0"
+azalea-world = "0.6.0"
+flume = "0.10.14"
+log = "0.4.17"
+tokio = "1.25.0"
+twilight-cache-inmemory = "0.15.0"
+twilight-gateway = "0.15.0"
+twilight-http = "0.15.0"
+twilight-model = "0.15.0"

@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "azalea-discord",
+    "azalea-health",
+    "azalea-matrix"
+]
