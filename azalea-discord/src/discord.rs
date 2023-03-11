@@ -96,16 +96,24 @@ async fn handle_mc_event(
         };
         match event {
             AzaleaEvent::Chat(_profile, packet) => {
-                let (sender, message) = packet.split_sender_and_content();
+                let (sender, mut message) = packet.split_sender_and_content();
                 let sender = if let Some(username) = sender {
                     username
                 } else {
                     "Server".to_string()
                 };
 
+                // Attempt to escape formatting
+                message = format!("{sender}: {message}")
+                    .replace('\\', "\\*")
+                    .replace('*', "\\*")
+                    .replace('_', "\\_")
+                    .replace('`', "\\`")
+                    .replace('>', "\\>");
+
                 // TODO: Escape formatting characters
                 http.create_message(channel_id)
-                    .content(&format!("{sender}: {message}"))
+                    .content(&message)
                     .unwrap()
                     .await
                     .unwrap();
